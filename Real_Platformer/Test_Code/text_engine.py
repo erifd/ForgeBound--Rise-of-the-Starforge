@@ -36,7 +36,7 @@ font = pygame.font.Font(font_path, 20)
 # Tiny font for "Press Space" message
 tiny_font = pygame.font.Font(font_path, 16)
 press_space_text = tiny_font.render("Press Space to continue", True, BLACK)
-press_space_rect = press_space_text.get_rect(center=(370, 500))
+press_space_rect = press_space_text.get_rect(center=(370, 375))
 press_blink_on = True
 last_press_blink_time = time.time()
 press_blink_interval = 0.5
