@@ -35,8 +35,6 @@ font = pygame.font.Font(font_path, 20)
 
 # Tiny font for "Press Space" message
 tiny_font = pygame.font.Font(font_path, 16)
-press_space_text = tiny_font.render("Press Space to continue", True, BLACK)
-press_space_rect = press_space_text.get_rect(center=(370, 375))
 press_blink_on = True
 last_press_blink_time = time.time()
 press_blink_interval = 0.5
@@ -63,8 +61,11 @@ lines = [
     ("Player", "This is a demo - hopefully this works"),
     ("Player", "And here’s another line for testing."),
     ("Player", "Adding even more lines to test scrolling in the text box."),
-    ("Bob", "Hi! I'm Bob the stickfigure. How's your day going?"),
-    ("System", "Answer Bob's Question:"),
+    ("???", "Hi! I'm Bob the stickfigure. How's your day going?"),
+    (["Great", "Meh", "BAD"], ["Hope it stays great!", "Cool!", "Womp womp!"]),
+    ("Bob", "Thanks for answering! Let’s move on."),
+    ("???", "Do you like pizza?"),
+    (["Yes", "No", "Sometimes"], ["Awesome, pizza lover!", "No way, really?", "Fair enough!"]),
     ("System", "This is a system line that should hide the token.")
 ]
 
@@ -79,13 +80,13 @@ max_x, line_height, bottom_y = 705, 20, 535
 max_lines_in_box = (bottom_y - start_y) // line_height + 1
 rendered_lines = []
 
-choices = ["Great!", "Meh", "BAD"]
+choices = []
 choice_index = 0
 choosing = False
 chosen = None  # stores selected choice
 follow_up_text = ""  # stores response text
 follow_up_done = False  # has response been fully displayed
-return_index = None  # remembers where to return after choice
+return_index = None  # remembers where to return after question
 
 blink_on = True
 last_blink_time = time.time()
@@ -167,13 +168,15 @@ while running:
                     rendered_lines = []
                     text_index = 0
                     if return_index is not None:
-                        text = return_index + 1 if return_index + 1 < len(lines) else -1
+                        text = return_index + 2 if return_index + 2 < len(lines) else -1  # skip past choices
                         return_index = None
 
                 # Advance normal lines fully typed
                 elif not choosing and chosen is None and text != -1 and text is not None and text_index >= len(lines[text][1]):
                     speaker, line = lines[text]
-                    if speaker == "System" and "Answer" in line:
+                    # If it's a question (???), activate choices (next element must be a tuple with choices and responses)
+                    if speaker == "???" and text + 1 < len(lines) and isinstance(lines[text+1], tuple):
+                        choices, responses = lines[text+1]
                         choosing = True
                         return_index = text
                     else:
@@ -190,12 +193,8 @@ while running:
                     choice_index = (choice_index + 1) % len(choices)
                 elif event.key == pygame.K_RETURN:
                     chosen = choices[choice_index]
-                    if chosen == "Great!":
-                        follow_up_text = "Bob: Glad to hear that!"
-                    elif chosen == "Meh":
-                        follow_up_text = "Bob: Well, at least it's not bad."
-                    else:
-                        follow_up_text = "Bob: Oh no! Hope it gets better."
+                    responses = lines[return_index + 1][1]  # Get responses from the tuple
+                    follow_up_text = responses[choice_index] if choice_index < len(responses) else f"Bob: You chose '{chosen}'!"
                     choosing = False
                     text = None
                     text_index = 0
@@ -220,15 +219,7 @@ while running:
             if text_index < len(follow_up_text):
                 char = follow_up_text[text_index]
                 displayed_text += char
-                # Properly append to rendered_lines
-                if not rendered_lines:
-                    rendered_lines.append(char)
-                else:
-                    test_line = rendered_lines[-1] + char
-                    if start_x + font.size(test_line)[0] > max_x:
-                        rendered_lines.append(char)
-                    else:
-                        rendered_lines[-1] = test_line
+                update_rendered_lines(char)
                 text_index += 1
             else:
                 follow_up_done = True
@@ -254,6 +245,8 @@ while running:
             press_blink_on = not press_blink_on
             last_press_blink_time = time.time()
         if press_blink_on:
+            press_space_text = tiny_font.render("Press Space to continue", True, WHITE)
+            press_space_rect = press_space_text.get_rect(center=(400, 300))
             screen.blit(press_space_text, press_space_rect)
 
     pygame.display.flip()
