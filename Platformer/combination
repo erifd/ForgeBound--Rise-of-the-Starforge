@@ -1,0 +1,691 @@
+# import torch
+import random
+import pygame
+import sys
+import os
+import event_manager as em
+import Storyline
+
+random.seed()
+
+# Init bg
+bg_folder = os.path.join(os.path.abspath(os.path.dirname(__file__)), "Assets", "Background")
+pic_location = os.path.join(bg_folder, 'Solarite_bg.png')
+bgso = pygame.image.load(pic_location)
+
+pygame.init()
+result = Storyline.run_storyline()
+if result == "done":
+    print("Switching to platformer...")
+
+SCREEN_WIDTH = 500
+SCREEN_HEIGHT = 320
+TILE_SIZE = 24
+GROUND_Y_OFFSET = 15
+
+bgso = pygame.transform.scale(bgso, (SCREEN_WIDTH, SCREEN_HEIGHT))
+
+GRAVITY = 1.156789123456789123456789
+JUMP_STRENGTH = 16.456
+player_speed = 4
+
+screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+pygame.display.set_caption("Forgebound: Rise of the Starforge")
+solarite_terrain_folder = os.path.join(os.path.abspath(os.path.dirname(__file__)), "Assets", "Terrain", "Solarite")
+cryon_terrain_folder = os.path.join(os.path.abspath(os.path.dirname(__file__)), "Assets", "Terrain", "Cryon")
+voidstone_terrain_folder = os.path.join(os.path.abspath(os.path.dirname(__file__)), "Assets", "Terrain", "Voidstone")
+gravium_terrain_folder = os.path.join(os.path.abspath(os.path.dirname(__file__)), "Assets", "Terrain", "Gravium")
+toxic_swamps_terrain_folder = os.path.join(os.path.abspath(os.path.dirname(__file__)), "Assets", "Terrain", "Toxic Swamps")
+player_folder = os.path.join(os.path.abspath(os.path.dirname(__file__)), "Assets", "Player", "Normal")
+
+# INIT PLAYER1
+player1_location = os.path.join(player_folder, 'player1.png')
+player1_img = pygame.image.load(player1_location).convert_alpha()
+player1_img = pygame.transform.scale(player1_img, (TILE_SIZE, TILE_SIZE*2))
+player1_surf = player1_img
+
+# Normal block
+block1_location = os.path.join(solarite_terrain_folder, 'normal_block_solarite.png')
+block_img = pygame.image.load(block1_location).convert_alpha()
+block_img = pygame.transform.scale(block_img, (TILE_SIZE, TILE_SIZE))
+block_surf = block_img
+
+# Lava
+lava_location = os.path.join(solarite_terrain_folder, 'lava_block.png')
+lava_img = pygame.image.load(lava_location).convert_alpha()
+lava_img = pygame.transform.scale(lava_img, (32, 16))
+lava_surf = lava_img
+
+# Spike
+spike_loc = os.path.join(solarite_terrain_folder, 'spike_solarite.png')
+spike_img = pygame.image.load(spike_loc).convert_alpha()
+spike_img = pygame.transform.scale(spike_img, (TILE_SIZE, TILE_SIZE * 2))
+spike_surf = spike_img
+
+tall_block_surf = pygame.Surface((TILE_SIZE, TILE_SIZE * 2)); tall_block_surf.fill((100, 255, 100))
+enemy_surf = pygame.Surface((TILE_SIZE, TILE_SIZE)); enemy_surf.fill((255, 0, 255))
+start_surf = pygame.Surface((TILE_SIZE, TILE_SIZE)); start_surf.fill((0, 255, 255))
+end_surf = pygame.Surface((TILE_SIZE, TILE_SIZE)); end_surf.fill((255, 255, 0))
+
+TERRAIN = ['block', 'lava', 'spike', 'tall_block', 'enemy']
+SEQUENCE_LENGTH = 20
+levels_completed = 0
+
+# Font for mouse coordinates
+font = pygame.font.Font(None, 24)
+
+# Red dot indicator - represents player on the pyramid path
+RED_DOT_RADIUS = 5
+
+# Define the pyramid path coordinates (x, y) for the red dot to follow
+# Path follows: start -> first house -> back to path -> second house -> cave -> light -> back -> house -> top
+PYRAMID_PATH = [
+    # Initial climb to first house
+    (40, 285), (60, 275), (80, 265), (100, 255), (120, 245),
+    # Jump to first house (circled area)
+    (140, 235),
+    # Level 1 complete - jump back to main path
+    (160, 225),
+    # Continue up the zigzag path
+    (180, 215), (200, 205), (220, 195), (240, 185),
+    (260, 175), (280, 165), (300, 155),
+    # Jump to second house (left side)
+    (120, 145),
+    # Level 2 complete - jump to cave
+    (320, 135),
+    # Level 3 complete - jump to light (right side)
+    (380, 125),
+    # Level 4 complete - jump back to path
+    (340, 115),
+    # Continue to house again
+    (320, 105),
+    # Level 5 complete - final climb to top
+    (300, 95), (280, 85), (260, 75), (240, 65), (220, 55), (200, 45),
+]
+
+def generate_level():
+    level = [''] * SEQUENCE_LENGTH
+    level[0] = 'start'
+    level[-1] = 'end'
+    count = 0
+
+    while True:
+        start = random.randint(1, SEQUENCE_LENGTH - 4)
+        if all(level[start + i] == '' for i in range(3)):
+            for i in range(3):
+                level[start + i] = 'block'
+                count += 1
+            break
+
+    while True:
+        start = random.randint(1, SEQUENCE_LENGTH - 4)
+        if all(cell == '' for cell in level[start:start + 3]):
+            for i in range(3):
+                level[start + i] = 'tall_block'
+            break
+
+    # Generate lava in sets of 2-4
+    num_lava = random.randint(2, 4)
+    while True:
+        start = random.randint(1, SEQUENCE_LENGTH - num_lava - 1)
+        if all(level[start + i] == '' for i in range(num_lava)):
+            for i in range(num_lava):
+                level[start + i] = 'lava'
+            break
+
+    # Generate spikes (1-4 spikes, but NOT 4 ground spikes on both sides)
+    num_spikes = random.randint(1, 4)
+    attempts = 0
+    while attempts < 50:
+        start = random.randint(1, SEQUENCE_LENGTH - num_spikes - 1)
+        if all(level[start + i] == '' for i in range(num_spikes)):
+            # Check if this would create 4 ground spikes
+            if num_spikes == 4:
+                # Check if there's a tall_block before the spikes
+                has_tall_block_before = any(level[i] == 'tall_block' for i in range(max(0, start - 3), start))
+                # Check if ground on both sides
+                left_is_ground = start > 0 and level[start - 1] == ''
+                right_is_ground = start + num_spikes < SEQUENCE_LENGTH and level[start + num_spikes] == ''
+                
+                # If 4 spikes on ground both sides and no tall block before, skip
+                if left_is_ground and right_is_ground and not has_tall_block_before:
+                    attempts += 1
+                    continue
+            
+            for i in range(num_spikes):
+                level[start + i] = 'spike'
+            break
+        attempts += 1
+
+    for i in range(SEQUENCE_LENGTH):
+        if level[i] == '':
+            level[i] = 'block'
+            count += 1
+
+    max_enemies = count // 3
+    enemy_count = 0
+    attempts = 0
+
+    def is_enemy_nearby(level, pos, range_=2):
+        start = max(0, pos - range_)
+        end = min(SEQUENCE_LENGTH, pos + range_ + 1)
+        return any(level[i] == 'enemy' for i in range(start, end) if i != pos)
+    
+    def has_spikes_before(level, pos, range_=4):
+        # Check if there are 4 spikes in the previous positions
+        spike_count = 0
+        for i in range(max(0, pos - range_), pos):
+            if level[i] == 'spike':
+                spike_count += 1
+        return spike_count >= 4
+
+    while enemy_count < max_enemies and attempts < 100:
+        pos = random.randint(3, SEQUENCE_LENGTH - 3)
+        if (level[pos] == 'block' and
+            level[pos - 1] == 'block' and
+            level[pos + 1] == 'block' and
+            not is_enemy_nearby(level, pos, range_=2) and
+            not has_spikes_before(level, pos, range_=4)):
+            level[pos] = 'enemy'
+            enemy_count += 1
+        attempts += 1
+
+    return level
+
+def find_starting_block():
+    # Always spawn at the 'start' tile (index 0)
+    tile_x = 0
+    tile_y = SCREEN_HEIGHT - TILE_SIZE - GROUND_Y_OFFSET
+    player_rect = pygame.Rect(tile_x, tile_y - TILE_SIZE * 2, TILE_SIZE, TILE_SIZE * 2)
+    player_rect.bottom = tile_y
+    return player_rect
+
+def spawn_enemies():
+    enemies.clear()
+    enemy_positions = []
+    for i, tile in enumerate(level):
+        if tile == 'enemy':
+            enemy_positions.append(i)
+            # Ensure there's a block beneath the enemy
+            level[i] = 'block'
+    
+    for i in enemy_positions:
+        x = i * TILE_SIZE
+        tile_y = SCREEN_HEIGHT - TILE_SIZE - GROUND_Y_OFFSET
+        enemy_rect = pygame.Rect(x, tile_y - TILE_SIZE, TILE_SIZE, TILE_SIZE)
+        enemy_rect.bottom = tile_y
+        enemies.append({
+            'rect': enemy_rect, 
+            'dir': random.choice([-1, 1]), 
+            'origin_x': x, 
+            'pause_timer': random.randint(0, 60),
+            'offset': random.randint(0, TILE_SIZE)
+        })
+
+# --- New Particle class for shatter effect ---
+class Particle:
+    def __init__(self, x, y, size):
+        self.rect = pygame.Rect(x, y, size, size)
+        self.vel_x = random.uniform(-4, 4)
+        self.vel_y = random.uniform(-8, -2)
+        self.size = size
+        self.lifetime = 60  # frames
+        self.gravity = 0.5
+
+    def update(self):
+        self.vel_y += self.gravity
+        self.rect.x += int(self.vel_x)
+        self.rect.y += int(self.vel_y)
+
+        # Bounce off floor
+        floor_y = SCREEN_HEIGHT - GROUND_Y_OFFSET
+        if self.rect.bottom >= floor_y:
+            self.rect.bottom = floor_y
+            self.vel_y = -self.vel_y * 0.6  # bounce damping
+            self.vel_x *= 0.8  # friction
+
+        self.lifetime -= 1
+
+    def draw(self, surface):
+        pygame.draw.rect(surface, (255, 124, 200), self.rect)
+
+# --- Globals for shatter animation ---
+particles = []
+shatter_animating = False
+
+# --- Globals for enemy death animation ---
+enemy_death_animating = False
+enemy_death_timer = 0
+death_enemy_pos = None
+enemy_rush_offset = 0
+slash_reveal = 0
+enemy_trail = []  # Store trail positions
+ENEMY_DEATH_DURATION = 120  # 2 seconds at 60 FPS
+RUSH_DURATION = 20  # frames for enemy to rush past
+CUT_DURATION = 40  # frames for cut to appear
+
+
+class Bubble:
+    def __init__(self, min_x, max_x):
+        self.min_x = min_x
+        self.max_x = max_x
+        self.reset()
+
+    def reset(self):
+        self.x = random.randint(self.min_x, self.max_x)
+        self.y = random.randint(SCREEN_HEIGHT, SCREEN_HEIGHT + 200)
+        self.radius = random.randint(3, 6)
+        self.speed = random.uniform(1, 2)
+        self.color = random.choice(BUBBLE_COLORS)
+
+    def update(self):
+        self.y -= self.speed
+        if self.y + self.radius < 0:
+            self.reset()
+
+    def draw(self, surface):
+        pygame.draw.circle(surface, self.color, (int(self.x), int(self.y)), self.radius)
+
+# --- Globals for lava animation ---
+BUBBLE_COLORS = [(255, 223, 0), (255, 165, 0)]
+bubbles = []
+bubbles_animating = False
+bubble_timer = 0
+BUBBLE_DURATION = 150  # 2.5 seconds at 60 FPS
+
+
+
+
+level = generate_level()
+LEVEL_WIDTH = len(level) * TILE_SIZE
+enemies = []
+spawn_enemies()
+player = find_starting_block()
+player_vel_y = 0
+on_ground = False
+scroll_x = 0
+dead = False
+death_phase = None
+death_timer = 0
+fade_surface = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+fade_surface.fill((0, 0, 0))
+fade_alpha = 0
+show_player = True
+
+clock = pygame.time.Clock()
+running = True
+while running:
+    clock.tick(60)
+    screen.blit(bgso, [0, 0])
+
+    # Get mouse position
+    mouse_x, mouse_y = pygame.mouse.get_pos()
+
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
+
+    keys = pygame.key.get_pressed()
+
+    # --- Update particles if shatter anim is active ---
+    if shatter_animating:
+        fade_surface.set_alpha(150)
+        screen.blit(fade_surface, (0, 0))
+
+        for p in particles[:]:
+            p.update()
+            p.draw(screen)
+            if p.lifetime <= 0:
+                particles.remove(p)
+
+        if not particles:
+            # Reset after shatter animation ends
+            shatter_animating = False
+            dead = False
+            player = find_starting_block()
+            player_vel_y = 0
+            scroll_x = 0
+            continue
+
+    # --- Enemy death animation ---
+    if enemy_death_animating:
+        # Pitch black background
+        screen.fill((0, 0, 0))
+
+        player_screen_x = player.x - scroll_x
+        
+        # Phase 1: Enemy rushes TOWARDS player (0-20 frames)
+        if enemy_death_timer < RUSH_DURATION:
+            progress = enemy_death_timer / RUSH_DURATION
+            # Rush from right side towards player
+            start_x = player_screen_x + TILE_SIZE * 4
+            enemy_rush_offset = progress * (TILE_SIZE * 4)
+            current_enemy_x = start_x - enemy_rush_offset
+            
+            # Add to trail
+            enemy_trail.append((current_enemy_x, death_enemy_pos[1] if death_enemy_pos else player.y))
+            if len(enemy_trail) > 8:  # Keep last 8 positions
+                enemy_trail.pop(0)
+            
+            # Draw orange trail (fading)
+            for i, (trail_x, trail_y) in enumerate(enemy_trail):
+                alpha = int((i / len(enemy_trail)) * 255)
+                trail_surf = enemy_surf.copy()
+                trail_surf.set_alpha(alpha)
+                # Tint orange
+                orange_overlay = pygame.Surface((TILE_SIZE, TILE_SIZE))
+                orange_overlay.fill((255, 140, 0))
+                trail_surf.blit(orange_overlay, (0, 0), special_flags=pygame.BLEND_MULT)
+                screen.blit(trail_surf, (trail_x, trail_y))
+            
+            # Draw current enemy
+            if death_enemy_pos:
+                screen.blit(enemy_surf, (current_enemy_x, death_enemy_pos[1]))
+            
+            screen.blit(player1_surf, [player_screen_x, player.y])
+        
+        # Phase 2: White pixelated arc appears (20-60 frames)
+        elif enemy_death_timer < RUSH_DURATION + CUT_DURATION:
+            # Draw fading trail
+            for i, (trail_x, trail_y) in enumerate(enemy_trail):
+                alpha = int((i / len(enemy_trail)) * 200)
+                trail_surf = enemy_surf.copy()
+                trail_surf.set_alpha(alpha)
+                orange_overlay = pygame.Surface((TILE_SIZE, TILE_SIZE))
+                orange_overlay.fill((255, 140, 0))
+                trail_surf.blit(orange_overlay, (0, 0), special_flags=pygame.BLEND_MULT)
+                screen.blit(trail_surf, (trail_x, trail_y))
+            
+            # Calculate slash reveal
+            slash_reveal = ((enemy_death_timer - RUSH_DURATION) / CUT_DURATION)
+            
+            # Draw player
+            screen.blit(player1_surf, [player_screen_x, player.y])
+            
+            # Draw LONGER pixelated diagonal slash line
+            cut_height = int(TILE_SIZE * 2 * slash_reveal)
+            for y in range(0, cut_height, 3):
+                # Diagonal cut from top-left to bottom-right (longer arc)
+                x_offset = int((y / (TILE_SIZE * 2)) * (TILE_SIZE * 1.5))
+                for x in range(-4, 12, 3):
+                    pygame.draw.rect(screen, (255, 255, 255), 
+                                   (player_screen_x + x_offset + x, player.y + y, 3, 3))
+        
+        # Phase 3: Hold the cut (60-120 frames)
+        else:
+            # Draw player
+            screen.blit(player1_surf, [player_screen_x, player.y])
+            
+            # Full diagonal slash (longer)
+            for y in range(0, TILE_SIZE * 2, 3):
+                x_offset = int((y / (TILE_SIZE * 2)) * (TILE_SIZE * 1.5))
+                for x in range(-4, 12, 3):
+                    pygame.draw.rect(screen, (255, 255, 255), 
+                                   (player_screen_x + x_offset + x, player.y + y, 3, 3))
+        
+        enemy_death_timer += 1
+        
+        if enemy_death_timer >= ENEMY_DEATH_DURATION:
+            enemy_death_animating = False
+            enemy_death_timer = 0
+            enemy_rush_offset = 0
+            slash_reveal = 0
+            death_enemy_pos = None
+            enemy_trail.clear()
+            dead = False
+            player = find_starting_block()
+            player_vel_y = 0
+            scroll_x = 0
+            continue
+
+    if bubbles_animating:
+        fade_surface.set_alpha(150)
+        screen.blit(fade_surface, (0, 0))
+
+        for bubble in bubbles:
+            bubble.update()
+            bubble.draw(screen)
+
+        bubble_timer += 1
+        if bubble_timer >= BUBBLE_DURATION:
+            bubbles_animating = False
+            bubbles.clear()
+            bubble_timer = 0
+            dead = False
+            player = find_starting_block()
+            player_vel_y = 0
+            scroll_x = 0
+            continue
+
+    if not shatter_animating and not bubbles_animating and not enemy_death_animating:
+        if dead:
+            player_vel_y = 0
+            death_timer += 1
+
+            if death_phase is None:
+                death_phase = 'fade'
+                death_timer = 0
+                fade_alpha = 0
+
+            if death_phase == 'fade':
+                fade_alpha = min(255, fade_alpha + 10)
+                if fade_alpha >= 255:
+                    death_phase = 'pause'
+                    death_timer = 0
+
+            elif death_phase == 'pause':
+                if death_timer >= 30:
+                    death_phase = 'scroll'
+                    death_timer = 0
+                    fade_alpha = 255
+
+            elif death_phase == 'scroll':
+                scroll_x -= 5
+                scroll_x = max(0, scroll_x)
+                show_player = (death_timer // 5) % 2 == 0
+                if scroll_x == 0:
+                    death_phase = 'reset'
+                    death_timer = 0
+
+            elif death_phase == 'reset':
+                player = find_starting_block()
+                player_vel_y = 0
+                dead = False
+                death_phase = None
+                death_timer = 0
+                show_player = True
+
+        else:
+            move_x = 0
+            if keys[pygame.K_LEFT]:
+                move_x = -player_speed
+            if keys[pygame.K_RIGHT]:
+                move_x = player_speed
+
+            player.x += move_x
+            player.y += player_vel_y
+            player_vel_y += GRAVITY
+            on_ground = False
+
+            for i, tile in enumerate(level):
+                tile_x = i * TILE_SIZE
+                tile_y = SCREEN_HEIGHT - TILE_SIZE - GROUND_Y_OFFSET
+                if tile in ('block', 'start', 'end'):
+                    tile_rect = pygame.Rect(tile_x, tile_y, TILE_SIZE, TILE_SIZE)
+                elif tile == 'tall_block':
+                    tile_rect = pygame.Rect(tile_x, tile_y - TILE_SIZE, TILE_SIZE, TILE_SIZE * 2)
+                else:
+                    continue
+                if player.colliderect(tile_rect):
+                    if player_vel_y > 0 and player.bottom <= tile_rect.top + player_vel_y:
+                        player.bottom = tile_rect.top
+                        player_vel_y = 0
+                        on_ground = True
+                    elif player_vel_y < 0 and player.top >= tile_rect.bottom - player_vel_y:
+                        player.top = tile_rect.bottom
+                        player_vel_y = 0
+
+            if keys[pygame.K_SPACE] and on_ground:
+                player_vel_y = -JUMP_STRENGTH
+
+            for enemy in enemies:
+                if enemy['pause_timer'] > 0:
+                    enemy['pause_timer'] -= 1
+                else:
+                    enemy['rect'].x += enemy['dir']
+                    distance_from_origin = abs(enemy['rect'].x - enemy['origin_x'])
+                    if distance_from_origin >= TILE_SIZE:
+                        enemy['dir'] *= -1
+                        enemy['pause_timer'] = 60  # 1 second at 60 FPS
+
+            # Find lava sections
+            lava_sections = []
+            in_lava = False
+            start_idx = 0
+            for i, tile in enumerate(level):
+                if tile == 'lava':
+                    if not in_lava:
+                        start_idx = i
+                        in_lava = True
+                else:
+                    if in_lava:
+                        lava_sections.append((start_idx, i - 1))
+                        in_lava = False
+            if in_lava:
+                lava_sections.append((start_idx, len(level) - 1))
+
+            for i, tile in enumerate(level):
+                tile_x = i * TILE_SIZE
+                tile_y = SCREEN_HEIGHT - TILE_SIZE - GROUND_Y_OFFSET
+                if tile == 'lava':
+                    lava_rect = pygame.Rect(tile_x, tile_y + TILE_SIZE // 2, TILE_SIZE, TILE_SIZE // 2)
+                    if player.colliderect(lava_rect):
+                        if not bubbles_animating:
+                            bubbles_animating = True
+                            bubble_timer = 0
+                            bubbles.clear()
+                            
+                            # Find which lava section the player died in
+                            for start_idx, end_idx in lava_sections:
+                                if start_idx <= i <= end_idx:
+                                    lava_start_x = start_idx * TILE_SIZE
+                                    lava_end_x = (end_idx + 1) * TILE_SIZE
+                                    # Create bubbles only in this lava section
+                                    for _ in range(40):
+                                        bubbles.append(Bubble(lava_start_x, lava_end_x))
+                                    break
+                        dead = True
+
+                elif tile == 'spike':
+                    spike_rect = pygame.Rect(tile_x, tile_y - TILE_SIZE, TILE_SIZE, TILE_SIZE * 2)
+                    if player.colliderect(spike_rect):
+                        # Trigger shatter animation on spike collision
+                        if not shatter_animating:
+                            shatter_animating = True
+                            particles.clear()
+                            particle_size = TILE_SIZE // 4
+                            px = player.x
+                            py = player.y
+                            for i_ in range(0, TILE_SIZE, particle_size):
+                                for j_ in range(0, TILE_SIZE, particle_size):
+                                    particles.append(Particle(px + i_, py + j_, particle_size))
+                        dead = True
+
+            for enemy in enemies:
+                if player.colliderect(enemy['rect']):
+                    if not enemy_death_animating:
+                        enemy_death_animating = True
+                        enemy_death_timer = 0
+                        enemy_rush_offset = 0
+                        slash_reveal = 0
+                        death_enemy_pos = (enemy['rect'].x, enemy['rect'].y)
+                    dead = True
+
+            if player.y > SCREEN_HEIGHT:
+                dead = True
+
+            end_x = (len(level) - 1) * TILE_SIZE
+            if player.x >= end_x:
+                level = generate_level()
+                levels_completed += 1
+                if levels_completed == 20:
+                    my_folder = os.path.abspath(os.path.dirname(__file__))
+                    pic_location = os.path.join(my_folder, 'Cryon_bg.png')
+                    bgso = pygame.image.load(pic_location)
+                    bgso = pygame.transform.scale(bgso, (SCREEN_WIDTH, SCREEN_HEIGHT))
+                    
+                LEVEL_WIDTH = len(level) * TILE_SIZE
+                spawn_enemies()
+                player = find_starting_block()
+                scroll_x = 0
+                player_vel_y = 0
+                continue
+
+            player.x = max(0, min(player.x, LEVEL_WIDTH - TILE_SIZE))
+            scroll_x = player.x - SCREEN_WIDTH // 2
+            scroll_x = max(0, min(scroll_x, LEVEL_WIDTH - SCREEN_WIDTH))
+
+    for i, tile in enumerate(level):
+        tile_x = i * TILE_SIZE - scroll_x
+        tile_y = SCREEN_HEIGHT - TILE_SIZE - GROUND_Y_OFFSET
+        if tile_x + TILE_SIZE < 0 or tile_x > SCREEN_WIDTH:
+            continue
+        if tile == 'block':
+            screen.blit(block_surf, (tile_x, tile_y))
+        elif tile == 'lava':
+            screen.blit(lava_surf, (tile_x, tile_y))
+        elif tile == 'spike':
+            screen.blit(spike_surf, (tile_x, tile_y -32))
+        elif tile == 'tall_block':
+            screen.blit(tall_block_surf, (tile_x, tile_y - TILE_SIZE))
+        elif tile == 'start':
+            screen.blit(start_surf, (tile_x, tile_y))
+        elif tile == 'end':
+            screen.blit(end_surf, (tile_x, tile_y))
+
+    for enemy in enemies:
+        screen.blit(enemy_surf, (enemy['rect'].x - scroll_x, enemy['rect'].y))
+
+    player_screen_x = player.x - scroll_x
+    if not dead or (show_player and not shatter_animating):
+        screen.blit(player1_surf, [player_screen_x, player.y])
+
+    if dead and not shatter_animating and not bubbles_animating and not enemy_death_animating:
+        fade_surface.set_alpha(fade_alpha)
+        screen.blit(fade_surface, (0, 0))
+
+    # Draw mouse coordinates with black background for visibility
+    coord_text = font.render(f"X: {mouse_x}, Y: {mouse_y}", True, (255, 255, 255))
+    text_rect = coord_text.get_rect(topleft=(5, 5))
+    
+    # Draw black background rectangle
+    bg_rect = pygame.Rect(text_rect.x - 2, text_rect.y - 2, text_rect.width + 4, text_rect.height + 4)
+    pygame.draw.rect(screen, (0, 0, 0), bg_rect)
+    
+    # Draw the text
+    screen.blit(coord_text, (5, 5))
+
+    # Draw red dot that follows the pyramid path based on level completion
+    # Each level completed moves the dot to the next major location
+    # Path segments: 0-5 (to first house), 6 (at house), 7-10 (to second house), etc.
+    path_segments_per_level = len(PYRAMID_PATH) / 20  # 20 levels total
+    dot_index = int(levels_completed * path_segments_per_level)
+    dot_index = min(dot_index, len(PYRAMID_PATH) - 1)
+    
+    # Within current level, interpolate based on player progress
+    current_level_progress = player.x / LEVEL_WIDTH
+    next_dot_index = min(dot_index + 1, len(PYRAMID_PATH) - 1)
+    
+    current_point = PYRAMID_PATH[dot_index]
+    next_point = PYRAMID_PATH[next_dot_index]
+    
+    # Smooth interpolation within the current segment
+    dot_x = current_point[0] + (next_point[0] - current_point[0]) * current_level_progress
+    dot_y = current_point[1] + (next_point[1] - current_point[1]) * current_level_progress
+    
+    pygame.draw.circle(screen, (255, 0, 0), (int(dot_x), int(dot_y)), RED_DOT_RADIUS)
+
+    pygame.display.flip()
+
+pygame.quit()
+sys.exit()

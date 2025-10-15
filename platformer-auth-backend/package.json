@@ -1,0 +1,12 @@
+{
+  "name": "platformer-auth-backend",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+  "start": "node server.js",
+  "migrate": "node migrate.js",
+  "test": "echo \"Error: no test specified\" && exit 1"
+}
+
+}
