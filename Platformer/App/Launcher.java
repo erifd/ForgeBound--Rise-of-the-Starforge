@@ -107,6 +107,9 @@ public class Launcher {
     }
 
     public static void main(String[] args) {
+        // Check for updates on startup (runs in background thread)
+        UpdateChecker.checkForUpdates();
+
         JFrame frame = new JFrame("Forgebound Launcher");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setSize(400, 300);
@@ -133,7 +136,7 @@ public class Launcher {
         }
 
         // Create form panel
-        JPanel formPanel = new JPanel(new GridLayout(4, 2));
+        JPanel formPanel = new JPanel(new GridLayout(5, 2));
         
         JLabel userLabel = new JLabel("Username:");
         JTextField userField = new JTextField();
@@ -144,6 +147,7 @@ public class Launcher {
         JCheckBox showPassword = new JCheckBox("Show Password");
         JButton loginButton = new JButton("Login");
         JButton signupButton = new JButton("Sign Up");
+        JButton guestButton = new JButton("Continue as Guest");
 
         formPanel.add(userLabel);
         formPanel.add(userField);
@@ -153,6 +157,8 @@ public class Launcher {
         formPanel.add(new JLabel(""));
         formPanel.add(loginButton);
         formPanel.add(signupButton);
+        formPanel.add(guestButton);
+        formPanel.add(new JLabel(""));
 
         frame.add(logoPanel, BorderLayout.NORTH);
         frame.add(formPanel, BorderLayout.CENTER);
@@ -252,6 +258,53 @@ public class Launcher {
             } else {
                 JOptionPane.showMessageDialog(frame, "Error signing up!");
             }
+        });
+
+        // Guest button - launch directly to game
+        guestButton.addActionListener(e -> {
+            // Open game frame without authentication
+            JFrame gameFrame = new JFrame("Game Launcher");
+            gameFrame.setSize(500, 320);
+            gameFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+
+            // Set icon for game frame
+            try {
+                ImageIcon icon = new ImageIcon("Assets/Terrain/Solarite/lava_block.png");
+                gameFrame.setIconImage(icon.getImage());
+            } catch (Exception ex) {
+                System.err.println("Could not load icon: " + ex.getMessage());
+            }
+
+            AnimatedPlayButton playButton = new AnimatedPlayButton("Play");
+            playButton.setPreferredSize(new Dimension(120, 60));
+
+            playButton.addActionListener(ev -> {
+                try {
+                    String pythonPath = "python"; // adjust if needed
+                    String scriptPath = "combination"; // relative path to the script
+
+                    // Get the current working directory
+                    File currentDir = new File(System.getProperty("user.dir"));
+
+                    ProcessBuilder pb = new ProcessBuilder(pythonPath, scriptPath);
+                    pb.directory(currentDir); // use current directory
+                    pb.inheritIO();
+                    pb.start();
+
+                    gameFrame.dispose();
+                    System.exit(0);
+
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                    JOptionPane.showMessageDialog(gameFrame, "Error launching game!");
+                }
+            });
+
+            gameFrame.setLayout(new GridBagLayout());
+            gameFrame.add(playButton);
+            gameFrame.setVisible(true);
+
+            frame.dispose();
         });
 
         frame.setVisible(true);
