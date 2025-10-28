@@ -1,10 +1,10 @@
 First, open powershell in this folder, then write:
-$env:GOOGLE_APPLICATION_CREDENTIALS="C:\Users\family_2\Downloads\platformer-auth-backend\serviceAccountKey.json"
+$env:GOOGLE_APPLICATION_CREDENTIALS="C:\Users\family_2\Forgebound--Rise-Of-The-Starforge\platformer-auth-backend\serviceAccountKey.json"
 
 Next, 
 npm start
 
 Or, just run this from a powershell window, doesnt need to be opened in this folder:
-cd C:\Users\family_2\Downloads\platformer-auth-backend
-$env:GOOGLE_APPLICATION_CREDENTIALS="C:\Users\family_2\Downloads\platformer-auth-backend\serviceAccountKey.json"
+cd C:\Users\family_2\Forgebound--Rise-Of-The-Starforge\platformer-auth-backend
+$env:GOOGLE_APPLICATION_CREDENTIALS="C:\Users\family_2\Forgebound--Rise-Of-The-Starforge\platformer-auth-backend\serviceAccountKey.json"
 npm start
