@@ -3,6 +3,7 @@ import random
 import pygame
 import sys
 import os
+import hashlib
 import event_manager as em
 import Storyline
 
@@ -78,30 +79,234 @@ font = pygame.font.Font(None, 24)
 RED_DOT_RADIUS = 5
 
 # Define the pyramid path coordinates (x, y) for the red dot to follow
-# Path follows: start -> first house -> back to path -> second house -> cave -> light -> back -> house -> top
 PYRAMID_PATH = [
-    # Initial climb to first house
     (40, 285), (60, 275), (80, 265), (100, 255), (120, 245),
-    # Jump to first house (circled area)
     (140, 235),
-    # Level 1 complete - jump back to main path
     (160, 225),
-    # Continue up the zigzag path
     (180, 215), (200, 205), (220, 195), (240, 185),
     (260, 175), (280, 165), (300, 155),
-    # Jump to second house (left side)
     (120, 145),
-    # Level 2 complete - jump to cave
     (320, 135),
-    # Level 3 complete - jump to light (right side)
     (380, 125),
-    # Level 4 complete - jump back to path
     (340, 115),
-    # Continue to house again
     (320, 105),
-    # Level 5 complete - final climb to top
     (300, 95), (280, 85), (260, 75), (240, 65), (220, 55), (200, 45),
 ]
+
+# Save code system
+class SaveCodeSystem:
+    SECRET_SALT = "FORGEBOUND_STARFORGE_2025"
+    USERS_FILE = os.path.join(os.path.dirname(__file__), "..", "platformer-auth-backend", "users.txt")
+    
+    @staticmethod
+    def generate_save_code(levels_completed):
+        data = f"{levels_completed}"
+        hash_input = f"{data}{SaveCodeSystem.SECRET_SALT}".encode('utf-8')
+        checksum = hashlib.sha256(hash_input).hexdigest()[:4].upper()
+        save_code = f"{levels_completed}-{checksum}"
+        return save_code
+    
+    @staticmethod
+    def validate_save_code(save_code):
+        try:
+            parts = save_code.strip().upper().split('-')
+            if len(parts) != 2:
+                return None
+            
+            levels_str, provided_checksum = parts
+            levels_completed = int(levels_str)
+            
+            if levels_completed < 0 or levels_completed > 20:
+                return None
+            
+            hash_input = f"{levels_completed}{SaveCodeSystem.SECRET_SALT}".encode('utf-8')
+            correct_checksum = hashlib.sha256(hash_input).hexdigest()[:4].upper()
+            
+            if provided_checksum != correct_checksum:
+                return None
+            
+            return levels_completed
+            
+        except (ValueError, IndexError):
+            return None
+    
+    @staticmethod
+    def save_to_users_file(username, save_code):
+        """Save the username and their save code to users.txt"""
+        try:
+            users_file = SaveCodeSystem.USERS_FILE
+            
+            # Read existing users
+            users = {}
+            if os.path.exists(users_file):
+                with open(users_file, 'r') as f:
+                    for line in f:
+                        line = line.strip()
+                        if ':' in line:
+                            parts = line.split(':', 2)  # Split into at most 3 parts
+                            if len(parts) >= 2:
+                                user = parts[0]
+                                password = parts[1]
+                                # Check if there's a save code
+                                existing_save = parts[2] if len(parts) == 3 else ""
+                                users[user] = {'password': password, 'save': existing_save}
+            
+            # Update or add the user's save code
+            if username in users:
+                users[username]['save'] = save_code
+            else:
+                # New user - no password stored (guest mode)
+                users[username] = {'password': '', 'save': save_code}
+            
+            # Write back to file
+            with open(users_file, 'w') as f:
+                for user, data in users.items():
+                    if data['save']:
+                        f.write(f"{user}:{data['password']}:{data['save']}\n")
+                    else:
+                        f.write(f"{user}:{data['password']}\n")
+            
+            return True
+        except Exception as e:
+            print(f"Error saving to users.txt: {e}")
+            return False
+    
+    @staticmethod
+    def load_from_users_file(username):
+        """Load a user's save code from users.txt"""
+        try:
+            users_file = SaveCodeSystem.USERS_FILE
+            
+            if not os.path.exists(users_file):
+                return None
+            
+            with open(users_file, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if ':' in line:
+                        parts = line.split(':', 2)
+                        if len(parts) >= 3 and parts[0] == username:
+                            return parts[2]  # Return save code
+            
+            return None
+        except Exception as e:
+            print(f"Error loading from users.txt: {e}")
+            return None
+
+def show_save_code_dialog(screen, font, levels_completed, username=None):
+    save_code = SaveCodeSystem.generate_save_code(levels_completed)
+    
+    # Save to users.txt if username provided
+    if username:
+        SaveCodeSystem.save_to_users_file(username, save_code)
+    
+    overlay = pygame.Surface((screen.get_width(), screen.get_height()))
+    overlay.fill((0, 0, 0))
+    overlay.set_alpha(180)
+    screen.blit(overlay, (0, 0))
+    
+    dialog_width = 400
+    dialog_height = 180
+    dialog_x = (screen.get_width() - dialog_width) // 2
+    dialog_y = (screen.get_height() - dialog_height) // 2
+    
+    pygame.draw.rect(screen, (50, 50, 50), (dialog_x, dialog_y, dialog_width, dialog_height))
+    pygame.draw.rect(screen, (255, 255, 255), (dialog_x, dialog_y, dialog_width, dialog_height), 3)
+    
+    title_text = font.render("YOUR SAVE CODE", True, (255, 255, 0))
+    title_rect = title_text.get_rect(center=(screen.get_width() // 2, dialog_y + 30))
+    screen.blit(title_text, title_rect)
+    
+    code_font = pygame.font.Font(None, 48)
+    code_text = code_font.render(save_code, True, (0, 255, 0))
+    code_rect = code_text.get_rect(center=(screen.get_width() // 2, dialog_y + 75))
+    screen.blit(code_text, code_rect)
+    
+    inst_text = font.render("Write this down! Press ESC to close", True, (200, 200, 200))
+    inst_rect = inst_text.get_rect(center=(screen.get_width() // 2, dialog_y + 120))
+    screen.blit(inst_text, inst_rect)
+    
+    # Show if saved to file
+    if username:
+        saved_text = font.render(f"Saved for user: {username}", True, (100, 255, 100))
+        saved_rect = saved_text.get_rect(center=(screen.get_width() // 2, dialog_y + 145))
+        screen.blit(saved_text, saved_rect)
+    
+    pygame.display.flip()
+    
+    waiting = True
+    while waiting:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return False
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    waiting = False
+    return True
+
+def show_load_code_dialog(screen, font):
+    input_text = ""
+    clock = pygame.time.Clock()
+    entering = True
+    
+    while entering:
+        clock.tick(60)
+        
+        overlay = pygame.Surface((screen.get_width(), screen.get_height()))
+        overlay.fill((0, 0, 0))
+        overlay.set_alpha(180)
+        screen.blit(overlay, (0, 0))
+        
+        dialog_width = 400
+        dialog_height = 180
+        dialog_x = (screen.get_width() - dialog_width) // 2
+        dialog_y = (screen.get_height() - dialog_height) // 2
+        
+        pygame.draw.rect(screen, (50, 50, 50), (dialog_x, dialog_y, dialog_width, dialog_height))
+        pygame.draw.rect(screen, (255, 255, 255), (dialog_x, dialog_y, dialog_width, dialog_height), 3)
+        
+        title_text = font.render("ENTER SAVE CODE", True, (255, 255, 0))
+        title_rect = title_text.get_rect(center=(screen.get_width() // 2, dialog_y + 30))
+        screen.blit(title_text, title_rect)
+        
+        input_box = pygame.Rect(dialog_x + 50, dialog_y + 70, dialog_width - 100, 40)
+        pygame.draw.rect(screen, (30, 30, 30), input_box)
+        pygame.draw.rect(screen, (255, 255, 255), input_box, 2)
+        
+        input_surface = font.render(input_text, True, (255, 255, 255))
+        screen.blit(input_surface, (input_box.x + 10, input_box.y + 10))
+        
+        inst_text = font.render("Press ENTER to load, ESC to cancel", True, (200, 200, 200))
+        inst_rect = inst_text.get_rect(center=(screen.get_width() // 2, dialog_y + 145))
+        screen.blit(inst_text, inst_rect)
+        
+        pygame.display.flip()
+        
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return None
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    return None
+                elif event.key == pygame.K_RETURN:
+                    levels = SaveCodeSystem.validate_save_code(input_text)
+                    if levels is not None:
+                        return levels
+                    else:
+                        error_text = font.render("INVALID CODE!", True, (255, 0, 0))
+                        error_rect = error_text.get_rect(center=(screen.get_width() // 2, dialog_y + 120))
+                        screen.blit(error_text, error_rect)
+                        pygame.display.flip()
+                        pygame.time.wait(1000)
+                        input_text = ""
+                elif event.key == pygame.K_BACKSPACE:
+                    input_text = input_text[:-1]
+                else:
+                    if event.unicode.isalnum() or event.unicode == '-':
+                        if len(input_text) < 10:
+                            input_text += event.unicode.upper()
+    
+    return None
 
 def generate_level():
     level = [''] * SEQUENCE_LENGTH
@@ -124,7 +329,6 @@ def generate_level():
                 level[start + i] = 'tall_block'
             break
 
-    # Generate lava in sets of 2-4
     num_lava = random.randint(2, 4)
     while True:
         start = random.randint(1, SEQUENCE_LENGTH - num_lava - 1)
@@ -133,21 +337,16 @@ def generate_level():
                 level[start + i] = 'lava'
             break
 
-    # Generate spikes (1-4 spikes, but NOT 4 ground spikes on both sides)
     num_spikes = random.randint(1, 4)
     attempts = 0
     while attempts < 50:
         start = random.randint(1, SEQUENCE_LENGTH - num_spikes - 1)
         if all(level[start + i] == '' for i in range(num_spikes)):
-            # Check if this would create 4 ground spikes
             if num_spikes == 4:
-                # Check if there's a tall_block before the spikes
                 has_tall_block_before = any(level[i] == 'tall_block' for i in range(max(0, start - 3), start))
-                # Check if ground on both sides
                 left_is_ground = start > 0 and level[start - 1] == ''
                 right_is_ground = start + num_spikes < SEQUENCE_LENGTH and level[start + num_spikes] == ''
                 
-                # If 4 spikes on ground both sides and no tall block before, skip
                 if left_is_ground and right_is_ground and not has_tall_block_before:
                     attempts += 1
                     continue
@@ -172,7 +371,6 @@ def generate_level():
         return any(level[i] == 'enemy' for i in range(start, end) if i != pos)
     
     def has_spikes_before(level, pos, range_=4):
-        # Check if there are 4 spikes in the previous positions
         spike_count = 0
         for i in range(max(0, pos - range_), pos):
             if level[i] == 'spike':
@@ -193,7 +391,6 @@ def generate_level():
     return level
 
 def find_starting_block():
-    # Always spawn at the 'start' tile (index 0)
     tile_x = 0
     tile_y = SCREEN_HEIGHT - TILE_SIZE - GROUND_Y_OFFSET
     player_rect = pygame.Rect(tile_x, tile_y - TILE_SIZE * 2, TILE_SIZE, TILE_SIZE * 2)
@@ -206,7 +403,6 @@ def spawn_enemies():
     for i, tile in enumerate(level):
         if tile == 'enemy':
             enemy_positions.append(i)
-            # Ensure there's a block beneath the enemy
             level[i] = 'block'
     
     for i in enemy_positions:
@@ -222,14 +418,13 @@ def spawn_enemies():
             'offset': random.randint(0, TILE_SIZE)
         })
 
-# --- New Particle class for shatter effect ---
 class Particle:
     def __init__(self, x, y, size):
         self.rect = pygame.Rect(x, y, size, size)
         self.vel_x = random.uniform(-4, 4)
         self.vel_y = random.uniform(-8, -2)
         self.size = size
-        self.lifetime = 60  # frames
+        self.lifetime = 60
         self.gravity = 0.5
 
     def update(self):
@@ -237,33 +432,29 @@ class Particle:
         self.rect.x += int(self.vel_x)
         self.rect.y += int(self.vel_y)
 
-        # Bounce off floor
         floor_y = SCREEN_HEIGHT - GROUND_Y_OFFSET
         if self.rect.bottom >= floor_y:
             self.rect.bottom = floor_y
-            self.vel_y = -self.vel_y * 0.6  # bounce damping
-            self.vel_x *= 0.8  # friction
+            self.vel_y = -self.vel_y * 0.6
+            self.vel_x *= 0.8
 
         self.lifetime -= 1
 
     def draw(self, surface):
         pygame.draw.rect(surface, (255, 124, 200), self.rect)
 
-# --- Globals for shatter animation ---
 particles = []
 shatter_animating = False
 
-# --- Globals for enemy death animation ---
 enemy_death_animating = False
 enemy_death_timer = 0
 death_enemy_pos = None
 enemy_rush_offset = 0
 slash_reveal = 0
-enemy_trail = []  # Store trail positions
-ENEMY_DEATH_DURATION = 120  # 2 seconds at 60 FPS
-RUSH_DURATION = 20  # frames for enemy to rush past
-CUT_DURATION = 40  # frames for cut to appear
-
+enemy_trail = []
+ENEMY_DEATH_DURATION = 120
+RUSH_DURATION = 20
+CUT_DURATION = 40
 
 class Bubble:
     def __init__(self, min_x, max_x):
@@ -286,15 +477,11 @@ class Bubble:
     def draw(self, surface):
         pygame.draw.circle(surface, self.color, (int(self.x), int(self.y)), self.radius)
 
-# --- Globals for lava animation ---
 BUBBLE_COLORS = [(255, 223, 0), (255, 165, 0)]
 bubbles = []
 bubbles_animating = False
 bubble_timer = 0
-BUBBLE_DURATION = 150  # 2.5 seconds at 60 FPS
-
-
-
+BUBBLE_DURATION = 150
 
 level = generate_level()
 LEVEL_WIDTH = len(level) * TILE_SIZE
@@ -312,13 +499,32 @@ fade_surface.fill((0, 0, 0))
 fade_alpha = 0
 show_player = True
 
+# Save/Load dialog flags
+show_save_dialog = False
+show_load_dialog = False
+current_username = None  # Store username from launcher
+
+# Check for username from command line argument (passed by launcher)
+if len(sys.argv) > 1:
+    current_username = sys.argv[1]
+    # Try to load saved progress for this user
+    saved_code = SaveCodeSystem.load_from_users_file(current_username)
+    if saved_code:
+        loaded_levels = SaveCodeSystem.validate_save_code(saved_code)
+        if loaded_levels is not None:
+            levels_completed = loaded_levels
+            print(f"Loaded progress for {current_username}: Level {loaded_levels}")
+            if levels_completed >= 20:
+                pic_location = os.path.join(bg_folder, 'Cryon_bg.png')
+                bgso = pygame.image.load(pic_location)
+                bgso = pygame.transform.scale(bgso, (SCREEN_WIDTH, SCREEN_HEIGHT))
+
 clock = pygame.time.Clock()
 running = True
 while running:
     clock.tick(60)
     screen.blit(bgso, [0, 0])
 
-    # Get mouse position
     mouse_x, mouse_y = pygame.mouse.get_pos()
 
     for event in pygame.event.get():
@@ -326,8 +532,14 @@ while running:
             running = False
 
     keys = pygame.key.get_pressed()
+    
+    # Check for Ctrl+S (save) and Ctrl+L (load)
+    if keys[pygame.K_LCTRL] or keys[pygame.K_RCTRL]:
+        if keys[pygame.K_s]:
+            show_save_dialog = True
+        if keys[pygame.K_l]:
+            show_load_dialog = True
 
-    # --- Update particles if shatter anim is active ---
     if shatter_animating:
         fade_surface.set_alpha(150)
         screen.blit(fade_surface, (0, 0))
@@ -339,7 +551,6 @@ while running:
                 particles.remove(p)
 
         if not particles:
-            # Reset after shatter animation ends
             shatter_animating = False
             dead = False
             player = find_starting_block()
@@ -347,46 +558,36 @@ while running:
             scroll_x = 0
             continue
 
-    # --- Enemy death animation ---
     if enemy_death_animating:
-        # Pitch black background
         screen.fill((0, 0, 0))
 
         player_screen_x = player.x - scroll_x
         
-        # Phase 1: Enemy rushes TOWARDS player (0-20 frames)
         if enemy_death_timer < RUSH_DURATION:
             progress = enemy_death_timer / RUSH_DURATION
-            # Rush from right side towards player
             start_x = player_screen_x + TILE_SIZE * 4
             enemy_rush_offset = progress * (TILE_SIZE * 4)
             current_enemy_x = start_x - enemy_rush_offset
             
-            # Add to trail
             enemy_trail.append((current_enemy_x, death_enemy_pos[1] if death_enemy_pos else player.y))
-            if len(enemy_trail) > 8:  # Keep last 8 positions
+            if len(enemy_trail) > 8:
                 enemy_trail.pop(0)
             
-            # Draw orange trail (fading)
             for i, (trail_x, trail_y) in enumerate(enemy_trail):
                 alpha = int((i / len(enemy_trail)) * 255)
                 trail_surf = enemy_surf.copy()
                 trail_surf.set_alpha(alpha)
-                # Tint orange
                 orange_overlay = pygame.Surface((TILE_SIZE, TILE_SIZE))
                 orange_overlay.fill((255, 140, 0))
                 trail_surf.blit(orange_overlay, (0, 0), special_flags=pygame.BLEND_MULT)
                 screen.blit(trail_surf, (trail_x, trail_y))
             
-            # Draw current enemy
             if death_enemy_pos:
                 screen.blit(enemy_surf, (current_enemy_x, death_enemy_pos[1]))
             
             screen.blit(player1_surf, [player_screen_x, player.y])
         
-        # Phase 2: White pixelated arc appears (20-60 frames)
         elif enemy_death_timer < RUSH_DURATION + CUT_DURATION:
-            # Draw fading trail
             for i, (trail_x, trail_y) in enumerate(enemy_trail):
                 alpha = int((i / len(enemy_trail)) * 200)
                 trail_surf = enemy_surf.copy()
@@ -396,27 +597,20 @@ while running:
                 trail_surf.blit(orange_overlay, (0, 0), special_flags=pygame.BLEND_MULT)
                 screen.blit(trail_surf, (trail_x, trail_y))
             
-            # Calculate slash reveal
             slash_reveal = ((enemy_death_timer - RUSH_DURATION) / CUT_DURATION)
             
-            # Draw player
             screen.blit(player1_surf, [player_screen_x, player.y])
             
-            # Draw LONGER pixelated diagonal slash line
             cut_height = int(TILE_SIZE * 2 * slash_reveal)
             for y in range(0, cut_height, 3):
-                # Diagonal cut from top-left to bottom-right (longer arc)
                 x_offset = int((y / (TILE_SIZE * 2)) * (TILE_SIZE * 1.5))
                 for x in range(-4, 12, 3):
                     pygame.draw.rect(screen, (255, 255, 255), 
                                    (player_screen_x + x_offset + x, player.y + y, 3, 3))
         
-        # Phase 3: Hold the cut (60-120 frames)
         else:
-            # Draw player
             screen.blit(player1_surf, [player_screen_x, player.y])
             
-            # Full diagonal slash (longer)
             for y in range(0, TILE_SIZE * 2, 3):
                 x_offset = int((y / (TILE_SIZE * 2)) * (TILE_SIZE * 1.5))
                 for x in range(-4, 12, 3):
@@ -536,9 +730,8 @@ while running:
                     distance_from_origin = abs(enemy['rect'].x - enemy['origin_x'])
                     if distance_from_origin >= TILE_SIZE:
                         enemy['dir'] *= -1
-                        enemy['pause_timer'] = 60  # 1 second at 60 FPS
+                        enemy['pause_timer'] = 60
 
-            # Find lava sections
             lava_sections = []
             in_lava = False
             start_idx = 0
@@ -565,12 +758,10 @@ while running:
                             bubble_timer = 0
                             bubbles.clear()
                             
-                            # Find which lava section the player died in
                             for start_idx, end_idx in lava_sections:
                                 if start_idx <= i <= end_idx:
                                     lava_start_x = start_idx * TILE_SIZE
                                     lava_end_x = (end_idx + 1) * TILE_SIZE
-                                    # Create bubbles only in this lava section
                                     for _ in range(40):
                                         bubbles.append(Bubble(lava_start_x, lava_end_x))
                                     break
@@ -579,7 +770,6 @@ while running:
                 elif tile == 'spike':
                     spike_rect = pygame.Rect(tile_x, tile_y - TILE_SIZE, TILE_SIZE, TILE_SIZE * 2)
                     if player.colliderect(spike_rect):
-                        # Trigger shatter animation on spike collision
                         if not shatter_animating:
                             shatter_animating = True
                             particles.clear()
@@ -654,36 +844,45 @@ while running:
         fade_surface.set_alpha(fade_alpha)
         screen.blit(fade_surface, (0, 0))
 
-    # Draw mouse coordinates with black background for visibility
     coord_text = font.render(f"X: {mouse_x}, Y: {mouse_y}", True, (255, 255, 255))
     text_rect = coord_text.get_rect(topleft=(5, 5))
     
-    # Draw black background rectangle
     bg_rect = pygame.Rect(text_rect.x - 2, text_rect.y - 2, text_rect.width + 4, text_rect.height + 4)
     pygame.draw.rect(screen, (0, 0, 0), bg_rect)
     
-    # Draw the text
     screen.blit(coord_text, (5, 5))
 
-    # Draw red dot that follows the pyramid path based on level completion
-    # Each level completed moves the dot to the next major location
-    # Path segments: 0-5 (to first house), 6 (at house), 7-10 (to second house), etc.
-    path_segments_per_level = len(PYRAMID_PATH) / 20  # 20 levels total
+    path_segments_per_level = len(PYRAMID_PATH) / 20
     dot_index = int(levels_completed * path_segments_per_level)
     dot_index = min(dot_index, len(PYRAMID_PATH) - 1)
     
-    # Within current level, interpolate based on player progress
     current_level_progress = player.x / LEVEL_WIDTH
     next_dot_index = min(dot_index + 1, len(PYRAMID_PATH) - 1)
     
     current_point = PYRAMID_PATH[dot_index]
     next_point = PYRAMID_PATH[next_dot_index]
     
-    # Smooth interpolation within the current segment
     dot_x = current_point[0] + (next_point[0] - current_point[0]) * current_level_progress
     dot_y = current_point[1] + (next_point[1] - current_point[1]) * current_level_progress
     
     pygame.draw.circle(screen, (255, 0, 0), (int(dot_x), int(dot_y)), RED_DOT_RADIUS)
+
+    # Handle save/load dialogs BEFORE pygame.display.flip()
+    if show_save_dialog:
+        if show_save_code_dialog(screen, font, levels_completed):
+            show_save_dialog = False
+        else:
+            running = False
+
+    if show_load_dialog:
+        loaded_levels = show_load_code_dialog(screen, font)
+        if loaded_levels is not None:
+            levels_completed = loaded_levels
+            if levels_completed >= 20:
+                pic_location = os.path.join(bg_folder, 'Cryon_bg.png')
+                bgso = pygame.image.load(pic_location)
+                bgso = pygame.transform.scale(bgso, (SCREEN_WIDTH, SCREEN_HEIGHT))
+        show_load_dialog = False
 
     pygame.display.flip()
 

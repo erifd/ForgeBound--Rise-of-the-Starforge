@@ -6,6 +6,7 @@ import java.awt.event.*;
 import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
 
 public class Launcher {
 
@@ -15,11 +16,11 @@ public class Launcher {
     // Debug mode flag
     private static boolean debugMode = false;
     
-    // Backend server process
-    private static Process backendProcess = null;
-    
     // Debug console process
     private static Process debugConsoleProcess = null;
+    
+    // Backend server process
+    private static Process backendProcess = null;
     
     // Get base directory for relative paths
     private static final File BASE_DIR = new File(System.getProperty("user.dir"));
@@ -42,7 +43,6 @@ public class Launcher {
     // Open a CMD window for debug output
     private static void openDebugConsole() {
         try {
-            // Create a batch file that keeps CMD open and tails the launcher output
             ProcessBuilder pb = new ProcessBuilder(
                 "cmd.exe", 
                 "/k", 
@@ -98,6 +98,127 @@ public class Launcher {
             return "{\"error\":\"Request failed\"}";
         }
     }
+
+    // ============ SEASONAL LOGO CHECKER ============
+    
+    /**
+     * Determines the appropriate seasonal logo based on the current date
+     * using astronomical season dates for 2025-2026.
+     */
+    private static String getCurrentSeasonLogo() {
+        LocalDate today = LocalDate.now();
+        return getSeasonLogoForDate(today);
+    }
+    
+    /**
+     * Determines the appropriate seasonal logo for a given date.
+     */
+    private static String getSeasonLogoForDate(LocalDate date) {
+        int year = date.getYear();
+        int month = date.getMonthValue();
+        int day = date.getDayOfMonth();
+        
+        // Check 2025 seasons
+        if (year == 2025) {
+            // Spring 2025: Mar 20 - Jun 19
+            if ((month == 3 && day >= 20) || (month == 4) || (month == 5) || (month == 6 && day <= 19)) {
+                return isEquinoxOrSolstice(date, year) ? "Logo Spring Equinox.png" : "Logo Spring.png";
+            }
+            // Summer 2025: Jun 20 - Sep 21
+            else if ((month == 6 && day >= 20) || (month == 7) || (month == 8) || (month == 9 && day <= 21)) {
+                return isEquinoxOrSolstice(date, year) ? "Logo Summer Solstice.png" : "Logo Summer.png";
+            }
+            // Fall 2025: Sep 22 - Dec 20
+            else if ((month == 9 && day >= 22) || (month == 10) || (month == 11) || (month == 12 && day <= 20)) {
+                return isEquinoxOrSolstice(date, year) ? "Logo Automnal Equinox.png" : "Logo Fall.png";
+            }
+            // Winter 2025: Dec 21 - end of year (continues into 2026)
+            else if (month == 12 && day >= 21) {
+                return "Logo Winter Solstice.png";
+            }
+            // Winter 2025 (beginning of year): Jan 1 - Mar 19
+            else if ((month == 1) || (month == 2) || (month == 3 && day <= 19)) {
+                return "Logo Winter.png";
+            }
+        }
+        
+        // Check 2026 seasons
+        else if (year == 2026) {
+            // Winter 2025-2026 (continuation): Jan 1 - Mar 19
+            if ((month == 1) || (month == 2) || (month == 3 && day <= 19)) {
+                return "Logo Winter.png";
+            }
+            // Spring 2026: Mar 20 - Jun 20
+            else if ((month == 3 && day >= 20) || (month == 4) || (month == 5) || (month == 6 && day <= 20)) {
+                return isEquinoxOrSolstice(date, year) ? "Logo Spring Equinox.png" : "Logo Spring.png";
+            }
+            // Summer 2026: Jun 21 - Sep 21
+            else if ((month == 6 && day >= 21) || (month == 7) || (month == 8) || (month == 9 && day <= 21)) {
+                return isEquinoxOrSolstice(date, year) ? "Logo Summer Solstice.png" : "Logo Summer.png";
+            }
+            // Fall 2026: Sep 22 - Dec 20
+            else if ((month == 9 && day >= 22) || (month == 10) || (month == 11) || (month == 12 && day <= 20)) {
+                return isEquinoxOrSolstice(date, year) ? "Logo Automnal Equinox.png" : "Logo Fall.png";
+            }
+            // Winter 2026: Dec 21 - end of year (continues into 2027)
+            else if (month == 12 && day >= 21) {
+                return "Logo Winter Solstice.png";
+            }
+        }
+        
+        // Default to a general seasonal approach for other years
+        return getGeneralSeasonLogo(month, day);
+    }
+    
+    /**
+     * Checks if the date is an equinox or solstice day.
+     */
+    private static boolean isEquinoxOrSolstice(LocalDate date, int year) {
+        int month = date.getMonthValue();
+        int day = date.getDayOfMonth();
+        
+        if (year == 2025) {
+            if (month == 3 && day == 20) return true;  // Spring Equinox
+            if (month == 6 && day == 20) return true;  // Summer Solstice
+            if (month == 9 && day == 22) return true;  // Fall Equinox
+            if (month == 12 && day == 21) return true; // Winter Solstice
+        } else if (year == 2026) {
+            if (month == 3 && day == 20) return true;  // Spring Equinox
+            if (month == 6 && day == 21) return true;  // Summer Solstice
+            if (month == 9 && day == 22) return true;  // Fall Equinox
+            if (month == 12 && day == 21) return true; // Winter Solstice
+        }
+        
+        return false;
+    }
+    
+    /**
+     * General season determination for years outside 2025-2026.
+     */
+    private static String getGeneralSeasonLogo(int month, int day) {
+        if ((month == 3 && day >= 20) || (month == 4) || (month == 5) || (month == 6 && day <= 20)) {
+            return "Logo Spring.png";
+        }
+        else if ((month == 6 && day >= 21) || (month == 7) || (month == 8) || (month == 9 && day <= 21)) {
+            return "Logo Summer.png";
+        }
+        else if ((month == 9 && day >= 22) || (month == 10) || (month == 11) || (month == 12 && day <= 20)) {
+            return "Logo Fall.png";
+        }
+        else {
+            return "Logo Winter.png";
+        }
+    }
+    
+    /**
+     * Gets the full path to the seasonal logo file.
+     */
+    private static String getSeasonalLogoPath() {
+        String logoFile = getCurrentSeasonLogo();
+        return "Assets/Logos/" + logoFile;
+    }
+    
+    // ============ END SEASONAL LOGO CHECKER ============
 
     // Custom animated Play button
     static class AnimatedPlayButton extends JButton {
@@ -162,18 +283,18 @@ public class Launcher {
         }
     }
 
-    private static void launchGame(JFrame parentFrame) {
+    private static void launchGame(JFrame parentFrame, String username) {
         try {
             updateStatus("Launching game...", Color.BLUE);
             
-            // Check for Python script in Platformer folder
-            File scriptFile = new File(BASE_DIR, "Platformer/combination");
+            // Check for Python script - it's in the same directory since we're in Platformer
+            File scriptFile = new File(BASE_DIR, "combination");
             if (!scriptFile.exists()) {
-                scriptFile = new File(BASE_DIR, "Platformer/combination.py");
+                scriptFile = new File(BASE_DIR, "combination.py");
                 if (!scriptFile.exists()) {
                     updateStatus("Game script not found!", Color.RED);
                     JOptionPane.showMessageDialog(parentFrame, 
-                        "Game script not found in: " + new File(BASE_DIR, "Platformer").getAbsolutePath());
+                        "Game script not found in: " + BASE_DIR.getAbsolutePath());
                     return;
                 }
             }
@@ -181,7 +302,14 @@ public class Launcher {
             String pythonPath = "python";
             String scriptPath = scriptFile.getAbsolutePath();
 
-            ProcessBuilder pb = new ProcessBuilder(pythonPath, scriptPath);
+            // Pass username as argument to the game
+            ProcessBuilder pb;
+            if (username != null && !username.isEmpty()) {
+                pb = new ProcessBuilder(pythonPath, scriptPath, username);
+            } else {
+                pb = new ProcessBuilder(pythonPath, scriptPath, "guest");
+            }
+            
             pb.directory(BASE_DIR);
             
             // Only show console output if debug mode is enabled
@@ -193,7 +321,7 @@ public class Launcher {
 
             // Stop backend server when game launches
             stopBackendServer();
-
+            closeDebugConsole();
             parentFrame.dispose();
             System.exit(0);
 
@@ -210,22 +338,34 @@ public class Launcher {
         try {
             updateStatus("Starting backend server...", Color.BLUE);
             
-            // Get the backend directory relative to the launcher
-            File backendDir = new File(BASE_DIR, "platformer-auth-backend");
+            // Determine backend location based on where we're running from
+            File backendDir;
             
-            // Check if backend directory exists
+            // Check if we're in Platformer subfolder or project root
+            if (BASE_DIR.getName().equals("Platformer")) {
+                // Running from Platformer folder: go up one level, then into platformer-auth-backend
+                backendDir = new File(BASE_DIR.getParentFile(), "platformer-auth-backend");
+            } else {
+                // Running from project root: backend is sibling folder
+                backendDir = new File(BASE_DIR, "platformer-auth-backend");
+            }
+            
+            System.err.println("[DEBUG] BASE_DIR: " + BASE_DIR.getAbsolutePath());
+            System.err.println("[DEBUG] Looking for backend at: " + backendDir.getAbsolutePath());
+            
             if (!backendDir.exists()) {
                 updateStatus("Backend not found. Use 'Continue as Guest'.", Color.ORANGE);
+                System.err.println("[ERROR] Backend directory does not exist!");
                 return;
             }
             
             File serviceAccountKey = new File(backendDir, "serviceAccountKey.json");
             if (!serviceAccountKey.exists()) {
                 updateStatus("Service key missing. Use 'Continue as Guest'.", Color.ORANGE);
+                System.err.println("[ERROR] serviceAccountKey.json not found at: " + serviceAccountKey.getAbsolutePath());
                 return;
             }
             
-            // Build PowerShell command to start the server
             String credentialsPath = serviceAccountKey.getAbsolutePath();
             String backendPath = backendDir.getAbsolutePath();
             
@@ -249,27 +389,27 @@ public class Launcher {
                 pb.inheritIO();
             } else {
                 // Redirect output to null if not in debug mode
-                File nullFile;
                 if (System.getProperty("os.name").startsWith("Windows")) {
-                    nullFile = new File("NUL");
+                    pb.redirectOutput(new File("NUL"));
+                    pb.redirectError(new File("NUL"));
                 } else {
-                    nullFile = new File("/dev/null");
+                    pb.redirectOutput(new File("/dev/null"));
+                    pb.redirectError(new File("/dev/null"));
                 }
-                pb.redirectOutput(nullFile);
-                pb.redirectError(nullFile);
             }
             
+            System.err.println("[DEBUG] Starting backend server...");
             backendProcess = pb.start();
             
             // Give the server a moment to start
             Thread.sleep(3000);
             
             updateStatus("Backend ready! Login/Signup enabled.", new Color(0, 150, 0));
-            System.out.println("Backend server started successfully");
+            System.err.println("[DEBUG] Backend server started successfully");
             
         } catch (Exception e) {
-            updateStatus("Backend failed: " + e.getMessage(), Color.ORANGE);
-            System.err.println("Failed to start backend server: " + e.getMessage());
+            updateStatus("Backend failed. Use 'Continue as Guest'.", Color.ORANGE);
+            System.err.println("[ERROR] Failed to start backend server: " + e.getMessage());
             if (debugMode) {
                 e.printStackTrace();
             }
@@ -284,9 +424,10 @@ public class Launcher {
             } catch (InterruptedException e) {
                 backendProcess.destroyForcibly();
             }
+            if (debugMode) {
+                System.out.println("[DEBUG] Backend server stopped");
+            }
         }
-        // Also close debug console when stopping backend
-        closeDebugConsole();
     }
 
     public static void main(String[] args) {
@@ -306,11 +447,22 @@ public class Launcher {
         frame.setSize(400, 350);
         frame.setLayout(new BorderLayout());
 
-        // Load and set the icon (relative path)
+        // Load and set the icon using seasonal logo
         try {
-            File iconFile = new File(BASE_DIR, "Assets/Terrain/Solarite/lava_block.png");
+            String logoPath = getSeasonalLogoPath();
+            File iconFile = new File(BASE_DIR, logoPath);
+            
+            // Fallback to default if seasonal logo not found
+            if (!iconFile.exists()) {
+                iconFile = new File(BASE_DIR, "Assets/Terrain/Solarite/lava_block.png");
+            }
+            
             ImageIcon icon = new ImageIcon(iconFile.getAbsolutePath());
             frame.setIconImage(icon.getImage());
+            
+            if (debugMode) {
+                System.out.println("[DEBUG] Using logo: " + logoPath);
+            }
         } catch (Exception e) {
             updateStatus("Could not load icon", Color.ORANGE);
             if (debugMode) {
@@ -318,15 +470,26 @@ public class Launcher {
             }
         }
 
-        // Create logo panel at the top
+        // Create logo panel at the top with seasonal logo
         JPanel logoPanel = new JPanel();
         logoPanel.setLayout(new FlowLayout(FlowLayout.CENTER));
         try {
-            File logoFile = new File(BASE_DIR, "Assets/Terrain/Solarite/lava_block.png");
+            String logoPath = getSeasonalLogoPath();
+            File logoFile = new File(BASE_DIR, logoPath);
+            
+            // Fallback to default if seasonal logo not found
+            if (!logoFile.exists()) {
+                logoFile = new File(BASE_DIR, "Assets/Terrain/Solarite/lava_block.png");
+            }
+            
             ImageIcon logoIcon = new ImageIcon(logoFile.getAbsolutePath());
             Image scaledImage = logoIcon.getImage().getScaledInstance(64, 64, Image.SCALE_SMOOTH);
             JLabel logoLabel = new JLabel(new ImageIcon(scaledImage));
             logoPanel.add(logoLabel);
+            
+            if (debugMode) {
+                System.out.println("[DEBUG] Logo loaded: " + logoPath);
+            }
         } catch (Exception e) {
             updateStatus("Could not load logo", Color.ORANGE);
             if (debugMode) {
@@ -381,6 +544,7 @@ public class Launcher {
             if (debugMode) {
                 updateStatus("Debug mode enabled", Color.BLUE);
                 openDebugConsole();
+                System.out.println("[DEBUG] Current seasonal logo: " + getCurrentSeasonLogo());
             } else {
                 updateStatus("Debug mode disabled", Color.BLUE);
                 closeDebugConsole();
@@ -410,6 +574,8 @@ public class Launcher {
             updateStatus("Logging in...", Color.BLUE);
             String json = String.format("{\"username\":\"%s\",\"password\":\"%s\"}", username, password);
             String response = sendPost("/login", json);
+            
+            System.out.println("[DEBUG] Login response: " + response);
 
             // Check if login was successful (no error in response)
             if (!response.contains("error")) {
@@ -421,9 +587,15 @@ public class Launcher {
                 gameFrame.setSize(500, 320);
                 gameFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
-                // Set icon for game frame too (relative path)
+                // Set icon for game frame with seasonal logo
                 try {
-                    File iconFile = new File(BASE_DIR, "Assets/Terrain/Solarite/lava_block.png");
+                    String logoPath = getSeasonalLogoPath();
+                    File iconFile = new File(BASE_DIR, logoPath);
+                    
+                    if (!iconFile.exists()) {
+                        iconFile = new File(BASE_DIR, "Assets/App/Logo/Logo Fall.png");
+                    }
+                    
                     ImageIcon icon = new ImageIcon(iconFile.getAbsolutePath());
                     gameFrame.setIconImage(icon.getImage());
                 } catch (Exception ex) {
@@ -433,7 +605,7 @@ public class Launcher {
                 AnimatedPlayButton playButton = new AnimatedPlayButton("Play");
                 playButton.setPreferredSize(new Dimension(120, 60));
 
-                playButton.addActionListener(ev -> launchGame(gameFrame));
+                playButton.addActionListener(ev -> launchGame(gameFrame, username));
 
                 gameFrame.setLayout(new GridBagLayout());
                 gameFrame.add(playButton);
@@ -441,8 +613,8 @@ public class Launcher {
 
                 frame.dispose();
             } else {
-                updateStatus("Invalid login credentials!", Color.RED);
-                JOptionPane.showMessageDialog(frame, "Invalid login credentials!");
+                updateStatus("Login failed: " + response, Color.RED);
+                JOptionPane.showMessageDialog(frame, "Invalid login credentials!\n" + response);
             }
         });
 
@@ -460,6 +632,8 @@ public class Launcher {
             updateStatus("Signing up...", Color.BLUE);
             String json = String.format("{\"username\":\"%s\",\"password\":\"%s\"}", username, password);
             String response = sendPost("/signup", json);
+            
+            System.out.println("[DEBUG] Signup response: " + response);
 
             // Check response for success or specific errors
             if (!response.contains("error")) {
@@ -469,8 +643,8 @@ public class Launcher {
                 updateStatus("User already exists!", Color.ORANGE);
                 JOptionPane.showMessageDialog(frame, "User already exists!");
             } else {
-                updateStatus("Error signing up!", Color.RED);
-                JOptionPane.showMessageDialog(frame, "Error signing up!");
+                updateStatus("Error: " + response, Color.RED);
+                JOptionPane.showMessageDialog(frame, "Error signing up: " + response);
             }
         });
 
@@ -483,9 +657,15 @@ public class Launcher {
             gameFrame.setSize(500, 320);
             gameFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
-            // Set icon for game frame (relative path)
+            // Set icon for game frame with seasonal logo
             try {
-                File iconFile = new File(BASE_DIR, "Assets/Terrain/Solarite/lava_block.png");
+                String logoPath = getSeasonalLogoPath();
+                File iconFile = new File(BASE_DIR, logoPath);
+                
+                if (!iconFile.exists()) {
+                    iconFile = new File(BASE_DIR, "Assets/App/Logo/Logo Fall.png");
+                }
+                
                 ImageIcon icon = new ImageIcon(iconFile.getAbsolutePath());
                 gameFrame.setIconImage(icon.getImage());
             } catch (Exception ex) {
@@ -495,7 +675,7 @@ public class Launcher {
             AnimatedPlayButton playButton = new AnimatedPlayButton("Play");
             playButton.setPreferredSize(new Dimension(120, 60));
 
-            playButton.addActionListener(ev -> launchGame(gameFrame));
+            playButton.addActionListener(ev -> launchGame(gameFrame, "guest"));
 
             gameFrame.setLayout(new GridBagLayout());
             gameFrame.add(playButton);
