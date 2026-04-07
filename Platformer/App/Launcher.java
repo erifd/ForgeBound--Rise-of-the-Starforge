@@ -2,7 +2,6 @@ package App;
 
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.*;
 import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
@@ -27,6 +26,10 @@ public class Launcher {
     
     // Status label for displaying messages
     private static JLabel statusLabel;
+    
+    // Store credentials for passing to GameLauncher
+    private static String currentUsername = null;
+    private static String currentPassword = null;
 
     // Helper method to update status label
     private static void updateStatus(String message, Color color) {
@@ -220,117 +223,63 @@ public class Launcher {
     
     // ============ END SEASONAL LOGO CHECKER ============
 
-    // Custom animated Play button
-    static class AnimatedPlayButton extends JButton {
-        private boolean hovered = false;
-        private int grow = 0;
-        private double angle = 0;
-
-        public AnimatedPlayButton(String text) {
-            super(text);
-            setContentAreaFilled(false);
-            setBorderPainted(false);
-            setFocusPainted(false);
-            setForeground(Color.WHITE);
-
-            Timer timer = new Timer(50, e -> {
-                if (hovered) {
-                    grow = Math.min(10, grow + 1);
-                    angle += 0.1;
-                } else {
-                    grow = Math.max(0, grow - 1);
-                    angle = 0;
-                }
-                repaint();
-            });
-            timer.start();
-
-            addMouseListener(new java.awt.event.MouseAdapter() {
-                @Override
-                public void mouseEntered(MouseEvent e) {
-                    hovered = true;
-                }
-
-                @Override
-                public void mouseExited(MouseEvent e) {
-                    hovered = false;
-                }
-            });
-        }
-
-        @Override
-        protected void paintComponent(Graphics g) {
-            Graphics2D g2 = (Graphics2D) g.create();
-            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-
-            int w = getWidth();
-            int h = getHeight();
-            int arc = 20 + grow;
-            int pad = 5;
-
-            g2.rotate(Math.sin(angle) * 0.1, w / 2.0, h / 2.0);
-
-            g2.setColor(Color.GREEN.darker());
-            g2.fillRoundRect(pad, pad, w - 2 * pad, h - 2 * pad, arc, arc);
-
-            g2.setColor(Color.WHITE);
-            FontMetrics fm = g2.getFontMetrics();
-            int textW = fm.stringWidth(getText());
-            int textH = fm.getAscent();
-            g2.drawString(getText(), (w - textW) / 2, (h + textH) / 2 - 4);
-
-            g2.dispose();
-        }
-    }
-
-    private static void launchGame(JFrame parentFrame, String username) {
+    // Open GameLauncher.java and pass credentials
+    private static void openGameLauncher(JFrame parentFrame, String username, String password) {
         try {
-            updateStatus("Launching game...", Color.BLUE);
+            updateStatus("Opening Game Launcher...", Color.BLUE);
             
-            // Check for Python script - it's in the same directory since we're in Platformer
-            File scriptFile = new File(BASE_DIR, "combination");
-            if (!scriptFile.exists()) {
-                scriptFile = new File(BASE_DIR, "combination.py");
-                if (!scriptFile.exists()) {
-                    updateStatus("Game script not found!", Color.RED);
-                    JOptionPane.showMessageDialog(parentFrame, 
-                        "Game script not found in: " + BASE_DIR.getAbsolutePath());
-                    return;
-                }
-            }
-            
-            String pythonPath = "python";
-            String scriptPath = scriptFile.getAbsolutePath();
-
-            // Pass username as argument to the game
-            ProcessBuilder pb;
-            if (username != null && !username.isEmpty()) {
-                pb = new ProcessBuilder(pythonPath, scriptPath, username);
-            } else {
-                pb = new ProcessBuilder(pythonPath, scriptPath, "guest");
-            }
-            
-            pb.directory(BASE_DIR);
-            
-            // Only show console output if debug mode is enabled
-            if (debugMode) {
-                pb.inheritIO();
-            }
-            
-            pb.start();
-
-            // Stop backend server when game launches
+            // Stop backend server
             stopBackendServer();
             closeDebugConsole();
+            
+            // Close the login frame
             parentFrame.dispose();
-            System.exit(0);
+            
+            // Launch GameLauncher with credentials
+            // You'll need to create a public method in GameLauncher to accept these
+            SwingUtilities.invokeLater(() -> {
+                try {
+                    // Assuming GameLauncher has a constructor or method that accepts credentials
+                    // You may need to adjust this based on your GameLauncher implementation
+                    Class<?> gameLauncherClass = Class.forName("App.GameLauncher");
+                    
+                    // Try to find a method to set credentials
+                    java.lang.reflect.Method setCredentialsMethod = null;
+                    try {
+                        setCredentialsMethod = gameLauncherClass.getMethod("setCredentials", String.class, String.class);
+                    } catch (NoSuchMethodException e) {
+                        // Method doesn't exist yet, will need to be added to GameLauncher
+                    }
+                    
+                    // Call main method to launch GameLauncher
+                    java.lang.reflect.Method mainMethod = gameLauncherClass.getMethod("main", String[].class);
+                    
+                    // Pass credentials as arguments if provided
+                    String[] args;
+                    if (username != null && password != null) {
+                        args = new String[]{username, password};
+                    } else {
+                        args = new String[]{"guest", ""};
+                    }
+                    
+                    mainMethod.invoke(null, (Object) args);
+                    
+                } catch (Exception e) {
+                    System.err.println("[ERROR] Failed to launch GameLauncher: " + e.getMessage());
+                    if (debugMode) {
+                        e.printStackTrace();
+                    }
+                    JOptionPane.showMessageDialog(null, 
+                        "Failed to launch GameLauncher!\n" + e.getMessage());
+                }
+            });
 
         } catch (Exception ex) {
-            updateStatus("Error launching game: " + ex.getMessage(), Color.RED);
+            updateStatus("Error opening GameLauncher: " + ex.getMessage(), Color.RED);
             if (debugMode) {
                 ex.printStackTrace();
             }
-            JOptionPane.showMessageDialog(parentFrame, "Error launching game: " + ex.getMessage());
+            JOptionPane.showMessageDialog(parentFrame, "Error opening GameLauncher: " + ex.getMessage());
         }
     }
     
@@ -444,7 +393,7 @@ public class Launcher {
 
         JFrame frame = new JFrame("Forgebound Launcher");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        frame.setSize(400, 350);
+        frame.setSize(400, 400);
         frame.setLayout(new BorderLayout());
 
         // Load and set the icon using seasonal logo
@@ -473,6 +422,7 @@ public class Launcher {
         // Create logo panel at the top with seasonal logo
         JPanel logoPanel = new JPanel();
         logoPanel.setLayout(new FlowLayout(FlowLayout.CENTER));
+        logoPanel.setPreferredSize(new Dimension(400, 100));
         try {
             String logoPath = getSeasonalLogoPath();
             File logoFile = new File(BASE_DIR, logoPath);
@@ -483,7 +433,7 @@ public class Launcher {
             }
             
             ImageIcon logoIcon = new ImageIcon(logoFile.getAbsolutePath());
-            Image scaledImage = logoIcon.getImage().getScaledInstance(64, 64, Image.SCALE_SMOOTH);
+            Image scaledImage = logoIcon.getImage().getScaledInstance(80, 80, Image.SCALE_SMOOTH);
             JLabel logoLabel = new JLabel(new ImageIcon(scaledImage));
             logoPanel.add(logoLabel);
             
@@ -560,7 +510,7 @@ public class Launcher {
             }
         });
 
-        // Login button
+        // Login button - Opens GameLauncher
         loginButton.addActionListener(e -> {
             String username = userField.getText().trim();
             String password = new String(passField.getPassword());
@@ -580,38 +530,16 @@ public class Launcher {
             // Check if login was successful (no error in response)
             if (!response.contains("error")) {
                 updateStatus("Login successful!", new Color(0, 150, 0));
+                
+                // Store credentials
+                currentUsername = username;
+                currentPassword = password;
+                
                 JOptionPane.showMessageDialog(frame, "Login successful!");
 
-                // Open new window with Play button
-                JFrame gameFrame = new JFrame("Game Launcher");
-                gameFrame.setSize(500, 320);
-                gameFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-
-                // Set icon for game frame with seasonal logo
-                try {
-                    String logoPath = getSeasonalLogoPath();
-                    File iconFile = new File(BASE_DIR, logoPath);
-                    
-                    if (!iconFile.exists()) {
-                        iconFile = new File(BASE_DIR, "Assets/App/Logo/Logo Fall.png");
-                    }
-                    
-                    ImageIcon icon = new ImageIcon(iconFile.getAbsolutePath());
-                    gameFrame.setIconImage(icon.getImage());
-                } catch (Exception ex) {
-                    System.err.println("Could not load icon: " + ex.getMessage());
-                }
-
-                AnimatedPlayButton playButton = new AnimatedPlayButton("Play");
-                playButton.setPreferredSize(new Dimension(120, 60));
-
-                playButton.addActionListener(ev -> launchGame(gameFrame, username));
-
-                gameFrame.setLayout(new GridBagLayout());
-                gameFrame.add(playButton);
-                gameFrame.setVisible(true);
-
-                frame.dispose();
+                // Open GameLauncher instead of creating new window
+                openGameLauncher(frame, currentUsername, currentPassword);
+                
             } else {
                 updateStatus("Login failed: " + response, Color.RED);
                 JOptionPane.showMessageDialog(frame, "Invalid login credentials!\n" + response);
@@ -648,40 +576,12 @@ public class Launcher {
             }
         });
 
-        // Guest button - launch directly to game
+        // Guest button - Opens GameLauncher in guest mode
         guestButton.addActionListener(e -> {
             updateStatus("Launching as guest...", Color.BLUE);
             
-            // Open game frame without authentication
-            JFrame gameFrame = new JFrame("Game Launcher");
-            gameFrame.setSize(500, 320);
-            gameFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-
-            // Set icon for game frame with seasonal logo
-            try {
-                String logoPath = getSeasonalLogoPath();
-                File iconFile = new File(BASE_DIR, logoPath);
-                
-                if (!iconFile.exists()) {
-                    iconFile = new File(BASE_DIR, "Assets/App/Logo/Logo Fall.png");
-                }
-                
-                ImageIcon icon = new ImageIcon(iconFile.getAbsolutePath());
-                gameFrame.setIconImage(icon.getImage());
-            } catch (Exception ex) {
-                System.err.println("Could not load icon: " + ex.getMessage());
-            }
-
-            AnimatedPlayButton playButton = new AnimatedPlayButton("Play");
-            playButton.setPreferredSize(new Dimension(120, 60));
-
-            playButton.addActionListener(ev -> launchGame(gameFrame, "guest"));
-
-            gameFrame.setLayout(new GridBagLayout());
-            gameFrame.add(playButton);
-            gameFrame.setVisible(true);
-
-            frame.dispose();
+            // Open GameLauncher in guest mode (no credentials)
+            openGameLauncher(frame, null, null);
         });
 
         frame.setVisible(true);
